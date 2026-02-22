@@ -6,7 +6,9 @@ load_dotenv()
 k = os.getenv("DEEPL_API_KEY", "")
 print("DEEPL key len:", len(k), "endswith_fx:", k.endswith(":fx"), flush=True)
 app = Flask(__name__)
-
+@app.get("/")
+def health():
+    return "ok", 200
 DOMAIN_ID = os.getenv("DOMAIN_ID", "")
 CLIENT_ID = os.getenv("CLIENT_ID", "")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET", "")
@@ -25,7 +27,7 @@ _cached_token = {"access_token": None, "exp": 0}
 def _load_private_key():
     pem = os.getenv("PRIVATE_KEY_PEM", "")
     if pem.strip():
-        return pem.replace("\\n", "\n")  # 1行貼り付け対策
+        return pem.replace("\\n", "\n")
     with open(PRIVATE_KEY_FILE, "r", encoding="utf-8") as f:
         return f.read()
 
