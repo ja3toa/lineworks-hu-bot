@@ -23,6 +23,9 @@ SHOW_ORIGINAL = os.getenv("SHOW_ORIGINAL", "0") == "1"
 _cached_token = {"access_token": None, "exp": 0}
 
 def _load_private_key():
+    pem = os.getenv("PRIVATE_KEY_PEM", "")
+    if pem.strip():
+        return pem.replace("\\n", "\n")  # 1行貼り付け対策
     with open(PRIVATE_KEY_FILE, "r", encoding="utf-8") as f:
         return f.read()
 
@@ -177,4 +180,5 @@ def webhook():
     return jsonify({"status": "ok"})
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    port = int(os.getenv("PORT", "5000"))
+    app.run(host="0.0.0.0", port=port)
