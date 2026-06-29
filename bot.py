@@ -26,8 +26,18 @@ _cached_token = {"access_token": None, "exp": 0}
 
 def _load_private_key():
     pem = os.getenv("PRIVATE_KEY_PEM", "")
-    if pem.strip():
-        return pem.replace("\\n", "\n")
+    if pem and pem.strip():
+        pem = pem.strip()
+
+        # どっちで入れても復旧できるようにする
+        pem = pem.replace("\\\\n", "\n")  # \\n → 改行
+        pem = pem.replace("\\n", "\n")    # \n  → 改行
+
+        if "BEGIN PRIVATE KEY" not in pem:
+            raise ValueError("PRIVATE_KEY_PEM がPEM形式ではありません")
+
+        return pem
+
     with open(PRIVATE_KEY_FILE, "r", encoding="utf-8") as f:
         return f.read()
 
@@ -113,9 +123,12 @@ def reply_to_lineworks(channel_id, message):
     r.raise_for_status()
 
 # ---- Webhook受信 ----
-@app.route("/webhook", methods=["POST"])
+@app.route("/webhook", methods=["POST", "GET"])
 def webhook():
+    if request.method == "GET":
+        return "webhook ok", 200
     data = request.json
+    ...
     print("=== webhook data ===", flush=True)
     print(data, flush=True)
 
