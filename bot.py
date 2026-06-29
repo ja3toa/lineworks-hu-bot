@@ -21,6 +21,13 @@ BOT_USER_ID = os.getenv("BOT_USER_ID", "")
 DEEPL_API_KEY = os.getenv("DEEPL_API_KEY", "")
 SHOW_ORIGINAL = os.getenv("SHOW_ORIGINAL", "0") == "1"
 
+# Ver.2.0-01 チャンネル別翻訳先
+CHANNEL_LANG = {
+    "ae234ac8-0ba3-61b3-6267-0c0da0d09e40": "HU"
+}
+
+DEFAULT_LANG = "HU"
+
 # ---- LINE WORKS: Access Token取得（Service Account JWT） ----
 _cached_token = {"access_token": None, "exp": 0}
 
@@ -109,6 +116,9 @@ def looks_like_japanese(s: str) -> bool:
             return True
     return False
 
+def get_target_lang(channel_id: str) -> str:
+    return CHANNEL_LANG.get(channel_id, DEFAULT_LANG)
+
 # ---- LINE WORKSへ返信 ----
 def reply_to_lineworks(channel_id, message):
     access_token = get_lineworks_access_token()
@@ -171,7 +181,8 @@ def webhook():
         # ---- 自動判定 ----
         else:
             if looks_like_japanese(text):
-                translated = translate(text, "HU")
+                target_lang = get_target_lang(channel_id)
+                translated = deepl_translate(text, target_lang)
                 body = f"🇭🇺 {translated}"
                 if SHOW_ORIGINAL:
                     body = f"🇯🇵 {text}\n{body}"
