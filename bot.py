@@ -77,7 +77,7 @@ def get_lineworks_access_token():
         "scope": "bot bot.message bot.read"
     }
     r = requests.post(token_url, data=data, timeout=15)
-    print("token http:", r.status_code, r.text, flush=True)
+    print("token http:", r.status_code, flush=True)
     r.raise_for_status()
     token = r.json()["access_token"]
     expires_in = int(r.json().get("expires_in", 3600))
