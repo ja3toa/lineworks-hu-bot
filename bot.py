@@ -182,7 +182,7 @@ def webhook():
         else:
             if looks_like_japanese(text):
                 target_lang = get_target_lang(channel_id)
-                translated = deepl_translate(text, target_lang)
+                translated = translate(text, target_lang)
                 body = f"🇭🇺 {translated}"
                 if SHOW_ORIGINAL:
                     body = f"🇯🇵 {text}\n{body}"
