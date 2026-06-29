@@ -23,7 +23,13 @@ SHOW_ORIGINAL = os.getenv("SHOW_ORIGINAL", "0") == "1"
 
 # Ver.2.0-01 チャンネル別翻訳先
 CHANNEL_LANG = {
-    "ae234ac8-0ba3-61b3-6267-0c0da0d09e40": "HU"
+
+    # Hungarian Language
+    "ae234ac8-0ba3-61b3-6267-0c0da0d09e40": "HU",
+
+    # English Language
+    "e3de398b-340a-0e03-0d36-06c0845c31be": "EN-US",
+
 }
 
 DEFAULT_LANG = "HU"
@@ -181,16 +187,21 @@ def webhook():
         # ---- 自動判定 ----
         else:
             if looks_like_japanese(text):
-                target_lang = get_target_lang(channel_id)
-                translated = translate(text, target_lang)
-                body = f"🇭🇺 {translated}"
-                if SHOW_ORIGINAL:
-                    body = f"🇯🇵 {text}\n{body}"
+               target_lang = get_target_lang(channel_id)
+               translated = translate(text, target_lang)
+
+               body = translated
+
+              if SHOW_ORIGINAL:
+                  body = f"{text}\n{body}"
+
             else:
-                translated = translate(text, "JA")
-                body = f"🇯🇵 {translated}"
-                if SHOW_ORIGINAL:
-                    body = f"🌍 {text}\n{body}"
+              translated = translate(text, "JA")
+
+              body = translated
+
+              if SHOW_ORIGINAL:
+                  body = f"{text}\n{body}"
 
         reply_text = "[X→] " + body   # ループ防止タグ
         reply_to_lineworks(channel_id, reply_text)
