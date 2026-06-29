@@ -1,19 +1,20 @@
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
-import os, time, requests, jwt
+import os
+import time
+import requests
+import jwt
 
 load_dotenv()
-k = os.getenv("DEEPL_API_KEY", "")
-print("DEEPL key len:", len(k), "endswith_fx:", k.endswith(":fx"), flush=True)
 app = Flask(__name__)
-@app.get("/")
-def health():
-    return "ok", 200
+
+# =========================
+# 基本設定
+# =========================
 DOMAIN_ID = os.getenv("DOMAIN_ID", "")
 CLIENT_ID = os.getenv("CLIENT_ID", "")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET", "")
 SERVICE_ACCOUNT = os.getenv("SERVICE_ACCOUNT", "")
-PRIVATE_KEY_FILE = os.getenv("PRIVATE_KEY_FILE", "private.key")
 
 BOT_ID = os.getenv("BOT_ID", "")
 BOT_USER_ID = os.getenv("BOT_USER_ID", "")
@@ -21,194 +22,264 @@ BOT_USER_ID = os.getenv("BOT_USER_ID", "")
 DEEPL_API_KEY = os.getenv("DEEPL_API_KEY", "")
 SHOW_ORIGINAL = os.getenv("SHOW_ORIGINAL", "0") == "1"
 
-# Ver.2.0-01 チャンネル別翻訳先
-CHANNEL_LANG = {
+PRIVATE_KEY_FILE = os.getenv("PRIVATE_KEY_FILE", "private.key")
 
+# =========================
+# Ver.2.0 チャンネル別翻訳先
+# 日本語 → 各チャンネルの言語
+# 外国語 → 日本語
+# =========================
+CHANNEL_LANG = {
     # Hungarian Language
     "ae234ac8-0ba3-61b3-6267-0c0da0d09e40": "HU",
 
     # English Language
     "e3de398b-340a-0e03-0d36-06c0845c31be": "EN-US",
 
+    # 今後追加予定
+    # "German channel_id": "DE",
+    # "French channel_id": "FR",
+    # "Italian channel_id": "IT",
 }
 
 DEFAULT_LANG = "HU"
 
-# ---- LINE WORKS: Access Token取得（Service Account JWT） ----
-_cached_token = {"access_token": None, "exp": 0}
+print("DEEPL key len:", len(DEEPL_API_KEY), "endswith_fx:", DEEPL_API_KEY.endswith(":fx"), flush=True)
+print("CHANNEL_LANG:", CHANNEL_LANG, flush=True)
 
-def _load_private_key():
+
+# =========================
+# Render ヘルスチェック
+# =========================
+@app.get("/")
+def health():
+    return "ok", 200
+
+
+# =========================
+# 秘密鍵読み込み
+# Render: PRIVATE_KEY_PEM
+# Local : private.key
+# =========================
+def load_private_key():
     pem = os.getenv("PRIVATE_KEY_PEM", "")
-    if pem and pem.strip():
-        pem = pem.strip()
-
-        # どっちで入れても復旧できるようにする
-        pem = pem.replace("\\\\n", "\n")  # \\n → 改行
-        pem = pem.replace("\\n", "\n")    # \n  → 改行
-
-        if "BEGIN PRIVATE KEY" not in pem:
-            raise ValueError("PRIVATE_KEY_PEM がPEM形式ではありません")
-
-        return pem
+    if pem.strip():
+        return pem.replace("\\n", "\n")
 
     with open(PRIVATE_KEY_FILE, "r", encoding="utf-8") as f:
         return f.read()
 
+
+# =========================
+# LINE WORKS Access Token
+# =========================
+_cached_token = {
+    "access_token": None,
+    "exp": 0,
+}
+
+
 def get_lineworks_access_token():
-    # キャッシュ（有効なら再利用）
     now = int(time.time())
+
     if _cached_token["access_token"] and now < _cached_token["exp"] - 30:
         return _cached_token["access_token"]
 
-    private_key = _load_private_key()
+    private_key = load_private_key()
 
-    # JWT作成
-    iat = now
-    exp = now + 60 * 55  # 55分くらい
     payload = {
         "iss": CLIENT_ID,
         "sub": SERVICE_ACCOUNT,
-        "iat": iat,
-        "exp": exp
+        "iat": now,
+        "exp": now + 60 * 55,
     }
+
     assertion = jwt.encode(payload, private_key, algorithm="RS256")
 
-    # Token API（OAuth2）
     token_url = "https://auth.worksmobile.com/oauth2/v2.0/token"
+
     data = {
         "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET,
         "assertion": assertion,
-        "scope": "bot bot.message bot.read"
+        "scope": "bot bot.message bot.read",
     }
+
     r = requests.post(token_url, data=data, timeout=15)
+
+    # トークン本文はログに出さない
     print("token http:", r.status_code, flush=True)
+
     r.raise_for_status()
-    token = r.json()["access_token"]
-    expires_in = int(r.json().get("expires_in", 3600))
 
-    _cached_token["access_token"] = token
-    _cached_token["exp"] = now + expires_in
-    return token
+    js = r.json()
+    _cached_token["access_token"] = js["access_token"]
+    _cached_token["exp"] = now + int(js.get("expires_in", 3600))
 
-# ---- 翻訳（DeepL: HU -> JA）※まずは動作確認ならここは後でもOK ----
+    return _cached_token["access_token"]
+
+
+# =========================
+# DeepL 翻訳
+# =========================
 def translate(text, target_lang):
     if not DEEPL_API_KEY:
         return f"(翻訳API未設定) {text}"
 
     url = "https://api-free.deepl.com/v2/translate"
+
     headers = {
         "Authorization": f"DeepL-Auth-Key {DEEPL_API_KEY}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
+
     payload = {
-        "text": [text],          # ← 配列で渡す
-        "target_lang": target_lang
-        # source_lang を省略＝自動判定
+        "text": [text],
+        "target_lang": target_lang,
+        # source_lang は省略＝DeepL自動判定
     }
 
     r = requests.post(url, headers=headers, json=payload, timeout=15)
     print("DEEPL status:", r.status_code, r.text, flush=True)
+
     r.raise_for_status()
 
     return r.json()["translations"][0]["text"]
 
-def looks_like_japanese(s: str) -> bool:
-    # ひらがな・カタカナ・漢字が1文字でもあれば日本語扱い
-    for ch in s:
+
+# =========================
+# 日本語判定
+# =========================
+def looks_like_japanese(text):
+    for ch in text:
         code = ord(ch)
-        if (0x3040 <= code <= 0x309F) or (0x30A0 <= code <= 0x30FF) or (0x4E00 <= code <= 0x9FFF):
+        if (
+            0x3040 <= code <= 0x309F  # ひらがな
+            or 0x30A0 <= code <= 0x30FF  # カタカナ
+            or 0x4E00 <= code <= 0x9FFF  # 漢字
+        ):
             return True
     return False
 
-def get_target_lang(channel_id: str) -> str:
+
+# =========================
+# チャンネル別翻訳先
+# =========================
+def get_target_lang(channel_id):
     return CHANNEL_LANG.get(channel_id, DEFAULT_LANG)
 
-# ---- LINE WORKSへ返信 ----
+
+# =========================
+# LINE WORKS 返信
+# =========================
 def reply_to_lineworks(channel_id, message):
     access_token = get_lineworks_access_token()
+
     url = f"https://www.worksapis.com/v1.0/bots/{BOT_ID}/channels/{channel_id}/messages"
+
     headers = {
         "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
-    payload = {"content": {"type": "text", "text": message}}
+
+    payload = {
+        "content": {
+            "type": "text",
+            "text": message,
+        }
+    }
+
     r = requests.post(url, headers=headers, json=payload, timeout=15)
     print("reply http:", r.status_code, r.text, flush=True)
+
     r.raise_for_status()
 
-# ---- Webhook受信 ----
+
+# =========================
+# Webhook
+# =========================
 @app.route("/webhook", methods=["POST", "GET"])
 def webhook():
     if request.method == "GET":
         return "webhook ok", 200
-    data = request.json
-    ...
+
+    data = request.json or {}
+
     print("=== webhook data ===", flush=True)
     print(data, flush=True)
 
     sender_id = data.get("source", {}).get("userId", "")
     channel_id = data.get("source", {}).get("channelId", "")
     text = data.get("content", {}).get("text", "") or ""
-
-    # ---- 強制翻訳コマンド (#JA / #HU) ----
-    forced = None
-    raw = text.strip()
-
-    if raw.upper().startswith("#JA "):
-        forced = "JA"
-        raw = raw[4:].strip()
-    elif raw.upper().startswith("#HU "):
-        forced = "HU"
-        raw = raw[4:].strip()
+    text = text.strip()
 
     print("channel_id:", channel_id, "text:", text, flush=True)
 
-    # ループ防止：Bot自身（設定している場合） or Bot投稿タグ
+    # Bot自身またはBot投稿を無視
     if BOT_USER_ID and sender_id == BOT_USER_ID:
         return jsonify({"status": "ignored"})
+
     if text.startswith("[X→]"):
         return jsonify({"status": "ignored"})
 
     try:
-        # ---- 強制指定があれば優先 ----
+        # =========================
+        # 強制翻訳コマンド
+        # #JA こんにちは
+        # #HU こんにちは
+        # #EN こんにちは
+        # #DE こんにちは
+        # #FR こんにちは
+        # #IT こんにちは
+        # =========================
+        forced = None
+        raw = text
+
+        if raw.startswith("#") and len(raw) >= 4 and raw[3] == " ":
+            code = raw[1:3].upper()
+            if code in ["JA", "HU", "EN", "DE", "FR", "IT"]:
+                forced = code
+                raw = raw[4:].strip()
+
         if forced:
-            translated = translate(raw, forced)
-            if forced == "JA":
-                body = f"🇯🇵 {translated}"
-                if SHOW_ORIGINAL:
-                    body = f"🌍 {raw}\n{body}"
-            else:
-                body = f"🇭🇺 {translated}"
-                if SHOW_ORIGINAL:
-                    body = f"🇯🇵 {raw}\n{body}"
+            target_lang = "EN-US" if forced == "EN" else forced
+            translated = translate(raw, target_lang)
 
-        # ---- 自動判定 ----
+            body = translated
+            if SHOW_ORIGINAL:
+                body = f"{raw}\n{body}"
+
         else:
+            # =========================
+            # 自動判定
+            # 日本語 → チャンネル別言語
+            # 外国語 → 日本語
+            # =========================
             if looks_like_japanese(text):
-               target_lang = get_target_lang(channel_id)
-               translated = translate(text, target_lang)
+                target_lang = get_target_lang(channel_id)
+                translated = translate(text, target_lang)
 
-               body = translated
-
-              if SHOW_ORIGINAL:
-                  body = f"{text}\n{body}"
+                body = translated
+                if SHOW_ORIGINAL:
+                    body = f"{text}\n{body}"
 
             else:
-              translated = translate(text, "JA")
+                translated = translate(text, "JA")
 
-              body = translated
+                body = translated
+                if SHOW_ORIGINAL:
+                    body = f"{text}\n{body}"
 
-              if SHOW_ORIGINAL:
-                  body = f"{text}\n{body}"
+        reply_text = "[X→] " + body
 
-        reply_text = "[X→] " + body   # ループ防止タグ
         reply_to_lineworks(channel_id, reply_text)
+
         print("reply OK", flush=True)
 
     except Exception as e:
         print("ERROR main:", repr(e), flush=True)
+
         try:
             reply_to_lineworks(channel_id, "⚠ 翻訳に失敗しました。もう一度送ってください。")
         except Exception as e2:
@@ -216,6 +287,11 @@ def webhook():
 
     return jsonify({"status": "ok"})
 
+
+# =========================
+# Local 起動用
+# Renderでは gunicorn が起動
+# =========================
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "5000"))
     app.run(host="0.0.0.0", port=port)
