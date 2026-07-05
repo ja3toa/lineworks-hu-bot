@@ -50,6 +50,11 @@ DEFAULT_LANG = "HU"
 print("DEEPL key len:", len(DEEPL_API_KEY), "endswith_fx:", DEEPL_API_KEY.endswith(":fx"), flush=True)
 print("CHANNEL_LANG:", CHANNEL_LANG, flush=True)
 
+CHANNEL_NAME = {
+    "ae234ac8-0ba3-61b3-6267-0c0da0d09e40": "Hungarian Language",
+    "e3de398b-340a-0e03-0d36-06c0845c31be": "English Language",
+    "59858f7c-b490-c9ba-c297-2795d7f76bdd": "Admin Channel",
+}
 
 # =========================
 # Render ヘルスチェック
@@ -204,10 +209,13 @@ def send_translation(channel_id, message):
             print("TEST_MODE is ON but ADMIN_CHANNEL_ID is empty", flush=True)
             return
 
-        admin_message = (
-            "[TEST MODE]\n"
-            f"original_channel_id: {channel_id}\n\n"
-            f"{message}"
+        channel_name = CHANNEL_NAME.get(channel_id, "Unknown Channel")
+
+       admin_message = (
+               "[TEST MODE]\n"
+               f"channel: {channel_name}\n"
+               f"channel_id: {channel_id}\n\n"
+               f"{message}"
         )
         reply_to_lineworks(ADMIN_CHANNEL_ID, admin_message)
     else:
