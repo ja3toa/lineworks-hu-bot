@@ -24,6 +24,9 @@ SHOW_ORIGINAL = os.getenv("SHOW_ORIGINAL", "0") == "1"
 
 PRIVATE_KEY_FILE = os.getenv("PRIVATE_KEY_FILE", "private.key")
 
+TEST_MODE = os.getenv("TEST_MODE", "0") == "1"
+ADMIN_CHANNEL_ID = os.getenv("ADMIN_CHANNEL_ID", "")
+
 # =========================
 # Ver.2.0 チャンネル別翻訳先
 # 日本語 → 各チャンネルの言語
@@ -195,6 +198,20 @@ def reply_to_lineworks(channel_id, message):
 
     r.raise_for_status()
 
+def send_translation(channel_id, message):
+    if TEST_MODE:
+        if not ADMIN_CHANNEL_ID:
+            print("TEST_MODE is ON but ADMIN_CHANNEL_ID is empty", flush=True)
+            return
+
+        admin_message = (
+            "[TEST MODE]\n"
+            f"original_channel_id: {channel_id}\n\n"
+            f"{message}"
+        )
+        reply_to_lineworks(ADMIN_CHANNEL_ID, admin_message)
+    else:
+        reply_to_lineworks(channel_id, message)
 
 # =========================
 # Webhook
@@ -273,7 +290,7 @@ def webhook():
 
         reply_text = "[X→] " + body
 
-        reply_to_lineworks(channel_id, reply_text)
+        send_translation(channel_id, reply_text)
 
         print("reply OK", flush=True)
 
@@ -281,7 +298,7 @@ def webhook():
         print("ERROR main:", repr(e), flush=True)
 
         try:
-            reply_to_lineworks(channel_id, "⚠ 翻訳に失敗しました。もう一度送ってください。")
+            send_translation(channel_id, "⚠ 翻訳に失敗しました。もう一度送ってください。")
         except Exception as e2:
             print("ERROR fallback:", repr(e2), flush=True)
 
