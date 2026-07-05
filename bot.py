@@ -211,12 +211,13 @@ def send_translation(channel_id, message):
 
         channel_name = CHANNEL_NAME.get(channel_id, "Unknown Channel")
 
-       admin_message = (
-               "[TEST MODE]\n"
-               f"channel: {channel_name}\n"
-               f"channel_id: {channel_id}\n\n"
-               f"{message}"
+        admin_message = (
+            "[TEST MODE]\n"
+            f"channel: {channel_name}\n"
+            f"channel_id: {channel_id}\n\n"
+            f"{message}"
         )
+
         reply_to_lineworks(ADMIN_CHANNEL_ID, admin_message)
     else:
         reply_to_lineworks(channel_id, message)
